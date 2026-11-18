@@ -342,25 +342,8 @@
       }
 
       const endpoint = (contactForm.getAttribute("data-endpoint") || "").trim();
-      if (endpoint) {
-        try {
-          const res = await fetch(endpoint, {
-            method: "POST",
-            headers: { "Content-Type": "application/json", Accept: "application/json" },
-            body: JSON.stringify({ name, email, subject, message }),
-          });
-          if (res.ok) {
-            contactForm.reset();
-            showFeedback(
-              "success",
-              "Thank you! Your message has been delivered directly to Sonu Singh."
-            );
-            return;
-          }
-        } catch {
-          // Fall through cleanly to working mailto fallback
-        }
-      }
+      const submitBtn = contactForm.querySelector("[data-submit-btn]");
+      const originalBtnText = submitBtn ? submitBtn.textContent : "Send Inquiry →";
 
       const mailto = `mailto:singh1998sonu@gmail.com?subject=${encodeURIComponent(
         `[Portfolio] ${subject}`
@@ -368,9 +351,82 @@
         `Hi Sonu,\n\n${message}\n\nBest regards,\n${name}\n${email}`
       )}`;
 
+      if (endpoint) {
+        // FormSubmit requires live http(s) hosting (like GitHub Pages), not local file://
+        if (window.location.protocol === "file:") {
+          showFeedback(
+            "gold",
+            `Form validation passed! Note: live email delivery activates automatically once uploaded to GitHub Pages (<code>https://</code>). While testing locally from disk, you can send via your email app:<div style="margin-top:14px"><a class="btn btn--primary btn--sm" href="${mailto}">Open Pre-Filled Email to singh1998sonu@gmail.com →</a></div>`
+          );
+          return;
+        }
+
+        if (submitBtn) {
+          submitBtn.disabled = true;
+          submitBtn.textContent = "Sending...";
+        }
+
+        try {
+          const isFormSubmit = endpoint.includes("formsubmit.co");
+          const payload = isFormSubmit
+            ? {
+                name,
+                email,
+                subject,
+                message,
+                _subject: `[Portfolio Inquiry] ${subject}`,
+                _replyto: email,
+                _template: "table",
+                _captcha: "false",
+                _honey: honeypot,
+              }
+            : { name, email, subject, message };
+
+          const res = await fetch(endpoint, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Accept: "application/json",
+            },
+            body: JSON.stringify(payload),
+          });
+
+          const data = await res.json().catch(() => ({}));
+          const delivered =
+            res.ok && (data.success === true || data.success === "true" || !isFormSubmit);
+
+          if (delivered) {
+            contactForm.reset();
+            showFeedback(
+              "success",
+              "<strong>Message sent!</strong> Thank you for reaching out — your inquiry has been delivered directly to Sonu Singh's inbox."
+            );
+            return;
+          }
+
+          if (
+            typeof data.message === "string" &&
+            data.message.toLowerCase().includes("activate")
+          ) {
+            showFeedback(
+              "gold",
+              "<strong>One-time Form Activation Required:</strong> FormSubmit just sent an activation email to <strong>singh1998sonu@gmail.com</strong> (check Inbox or Spam). Click <em>Activate Form</em> once, and every future message will arrive automatically in Gmail!"
+            );
+            return;
+          }
+        } catch {
+          // Fall through cleanly to working mailto fallback
+        } finally {
+          if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.textContent = originalBtnText;
+          }
+        }
+      }
+
       showFeedback(
         "gold",
-        `Your inquiry passed validation! Static GitHub Pages hosting requires either a Formspree endpoint (add <code>data-endpoint</code> on the form) or direct email dispatch. Click below to send your pre-filled email right now:<div style="margin-top:14px"><a class="btn btn--primary btn--sm" href="${mailto}">Open Pre-Filled Email to singh1998sonu@gmail.com →</a></div>`
+        `We couldn't reach the automated mail service right now, but your message is ready. Click below to send it directly via your email client:<div style="margin-top:14px"><a class="btn btn--primary btn--sm" href="${mailto}">Open Pre-Filled Email to singh1998sonu@gmail.com →</a></div>`
       );
     });
   }
